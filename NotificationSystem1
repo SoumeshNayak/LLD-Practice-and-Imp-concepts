@@ -1,0 +1,60 @@
+
+interface INotification{
+    void notify(String text);
+}
+class EmailNotification implements INotification{
+    public void notify(String text){
+        System.out.println("You have EmaIL Notification! "+ " " + text);
+    }
+}
+class SMSNotification implements INotification{
+    public void notify(String text){
+        System.out.println("You have SMS Notification! "+ " " + text);
+    }
+}
+class NotificationService{
+    private INotification ns;
+    public void setNotification(INotification ns){
+        this.ns=ns;
+    }
+    public void notifyUser(String text){
+        ns.notify(text);
+    }
+}
+class NotificationFactory{
+    public static INotification getNotification(String type){
+        if("Email".equals(type)){
+            return new EmailNotification();
+        }else if("SMS".equals(type)){
+            return new SMSNotification();
+        }
+        throw new IllegalArgumentException("Not a valid type");
+    }
+}
+class NotificationManager{
+    private static volatile NotificationManager nm=null;
+    private NotificationService ns;
+    private NotificationManager(){}
+    public static NotificationManager getManagerInstance(){
+        if(nm==null){
+            synchronized (NotificationManager.class){
+                if(nm==null){
+                    nm=new NotificationManager();
+                }
+            }
+        }
+        return nm;
+    }
+    public void send(String type,String message){
+        ns=new NotificationService();
+        INotification notificationType=NotificationFactory.getNotification(type);
+        ns.setNotification(notificationType);
+        ns.notifyUser(message);
+    }
+}
+class Main {
+    public static void main(String[] args) {
+        NotificationManager nm=NotificationManager.getManagerInstance();
+        nm.send("Email","Hello Soumesh you are selected for sde1 role @..!!");
+    }
+}
