@@ -1,0 +1,122 @@
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
+enum Tier {
+    NORMAL,
+    PREMIUM
+}
+
+class User {
+    private String userId;
+    private Tier tier;
+
+    User(String userId, Tier tier) {
+        this.userId = userId;
+        this.tier = tier;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public Tier getTier() {
+        return tier;
+    }
+}
+
+abstract class RateLimiter {
+    abstract boolean allowRequest();
+}
+
+class TokenBucketRateLimiter extends RateLimiter {
+    private int bucketSize;
+    private int refillRate;
+    private AtomicInteger currentTokens;
+    private AtomicLong lastRefillTime;
+
+    TokenBucketRateLimiter(int bucketSize, int refillRate) {
+        this.bucketSize = bucketSize;
+        this.refillRate = refillRate;
+        this.currentTokens = new AtomicInteger(bucketSize);
+        this.lastRefillTime = new AtomicLong(System.currentTimeMillis());
+    }
+
+    public synchronized boolean allowRequest() {
+        refill();
+        if (currentTokens.get() > 0) {
+            currentTokens.decrementAndGet();
+            return true;
+        }
+        return false;
+    }
+
+    private void refill() {
+        long currTime = System.currentTimeMillis();
+        long elapsed = currTime - lastRefillTime.get();
+
+        int newTokens = (int) ((elapsed / 1000) * refillRate);
+
+        if (newTokens > 0) {
+            int updated = Math.min(currentTokens.get() + newTokens, bucketSize);
+            currentTokens.set(updated);
+            lastRefillTime.set(currTime);
+        }
+    }
+}
+
+class FactoryRateLimiter {
+    public static RateLimiter getRateLimiter(User user) {
+        if (user.getTier() == Tier.NORMAL) {
+            return new TokenBucketRateLimiter(5, 2);
+        } else if (user.getTier() == Tier.PREMIUM) {
+            return new TokenBucketRateLimiter(10, 4);
+        } else {
+            throw new IllegalArgumentException("Invalid tier");
+        }
+    }
+}
+
+class RateLimiterService {
+    Map<String, RateLimiter> map = new HashMap<>();
+
+    public void setUserRateLimiter(User user) {
+        map.put(user.getUserId(), FactoryRateLimiter.getRateLimiter(user));
+    }
+
+    public void allowRequest(User user) {
+        RateLimiter rm = map.get(user.getUserId());
+
+        if (rm.allowRequest()) {
+            System.out.println("Allowed");
+        } else {
+            System.out.println("Too many requests");
+        }
+    }
+}
+
+public class Main {
+    public static void main(String[] args) throws InterruptedException{
+        RateLimiterService rs = new RateLimiterService();
+
+        User user1 = new User("1", Tier.NORMAL);
+
+        rs.setUserRateLimiter(user1);
+
+         // 🔥 First burst (should allow 5)
+        System.out.println("---- Initial Requests ----");
+        for (int i = 0; i < 7; i++) {
+            rs.allowRequest(user1);
+        }
+
+        // ⏱ Wait 2 seconds
+        System.out.println("\nWaiting 2 seconds...\n");
+        Thread.sleep(2000);
+
+        // 🔥 After refill (should allow ~4 requests)
+        System.out.println("---- After 2 sec ----");
+        for (int i = 0; i < 5; i++) {
+            rs.allowRequest(user1);
+        }
+    }
+}
